@@ -39,6 +39,8 @@ def run_consolidated_report():
         file_done += 1
         file_path = os.path.join(folder_path, filename)
         base_filename = os.path.splitext(filename)[0]
+        
+        # Case-insensitive check for '_custom' or '_Custom'
         is_custom_file = "_custom" in base_filename.lower()
 
         try:
@@ -55,6 +57,7 @@ def run_consolidated_report():
 
         for ws_name, df in sheets.items():
             if is_custom_file:
+                # Custom files: Row 4 onwards (index 3 in Python), Col A=0, Col B=1, Col C=2
                 if df.shape[1] < 3:
                     continue
                 
@@ -82,6 +85,7 @@ def run_consolidated_report():
                         dict_bytes[error_name] = dict_bytes.get(error_name, 0.0) + row_bytes_val
                         processed_sheets += 1
             else:
+                # Standard files: Find headers "Count" and "Size"
                 count_col = None
                 size_col = None
                 for col in df.columns:
