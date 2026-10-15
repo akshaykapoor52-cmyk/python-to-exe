@@ -44,23 +44,30 @@ def run_consolidated_report():
 
         try:
             if filename.lower().endswith('.csv'):
-                df = pd.read_csv(file_path, header=None)
+                if is_custom_file:
+                    # Skip the first 3 title/header lines for custom CSVs
+                    df = pd.read_csv(file_path, skiprows=3, header=None)
+                else:
+                    df = pd.read_csv(file_path, header=0)
                 sheets = {base_filename: df}
             else:
-                # Load all sheets without headers so row indices match VBA exactly
-                sheets = pd.read_excel(file_path, sheet_name=None, header=None)
+                if is_custom_file:
+                    sheets = pd.read_excel(file_path, sheet_name=None, header=None)
+                else:
+                    sheets = pd.read_excel(file_path, sheet_name=None, header=0)
         except Exception as e:
             print(f"Error reading file {filename}: {e}")
             continue
 
         for ws_name, df in sheets.items():
             if is_custom_file:
-                # Custom files: Row-by-row processing starting from row 4 (index 3 in Python)
-                # Column A = 0, Column B = 1, Column C = 2
                 if df.shape[1] < 3:
                     continue
                 
-                for r in range(3, len(df)):
+                # For Excel custom sheets, row index 3 is row 4. For CSV with skiprows=3, index 0 is row 4.
+                start_row = 0 if filename.lower().endswith('.csv') else 3
+                
+                for r in range(start_row, len(df)):
                     error_name = str(df.iloc[r, 0]).strip()
                     if error_name and error_name.lower() != 'nan' and error_name != 'None':
                         row_count_val = 0.0
@@ -84,18 +91,9 @@ def run_consolidated_report():
                         dict_bytes[error_name] = dict_bytes.get(error_name, 0.0) + row_bytes_val
                         processed_sheets += 1
             else:
-                # Standard files: Re-read or interpret with headers since standard files use named headers
-                try:
-                    if filename.lower().endswith('.csv'):
-                        std_df = pd.read_csv(file_path, header=0)
-                    else:
-                        std_df = pd.read_excel(file_path, sheet_name=ws_name, header=0)
-                except Exception:
-                    continue
-
                 count_col = None
                 size_col = None
-                for col in std_df.columns:
+                for col in df.columns:
                     clean_col = str(col).strip().lower()
                     if clean_col == 'count':
                         count_col = col
@@ -103,8 +101,8 @@ def run_consolidated_report():
                         size_col = col
 
                 if count_col is not None and size_col is not None:
-                    row_count_val = pd.to_numeric(std_df[count_col], errors='coerce').fillna(0).sum()
-                    row_bytes_val = pd.to_numeric(std_df[size_col], errors='coerce').fillna(0).sum()
+                    row_count_val = pd.to_numeric(df[count_col], errors='coerce').fillna(0).sum()
+                    row_bytes_val = pd.to_numeric(df[size_col], errors='coerce').fillna(0).sum()
 
                     ws_name_str = str(ws_name)
                     if "ocr" in ws_name_str.lower() or "text" in ws_name_str.lower():
