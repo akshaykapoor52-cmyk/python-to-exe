@@ -11,7 +11,9 @@ def create_consolidated_report():
         print("No folder selected. Operation cancelled.")
         return
 
+    # Normalize folder path cleanly
     folder_path = os.path.abspath(folder_path) + os.sep
+    print(f"\nScanning directory: {folder_path}")
 
     dict_count = {}
     dict_bytes = {}
@@ -22,21 +24,28 @@ def create_consolidated_report():
     try:
         all_items = os.listdir(folder_path)
     except Exception as e:
-        print(f"Error reading folder: {e}")
+        print(f"Error accessing directory: {e}")
         return
+
+    print(f"Total items found in directory: {len(all_items)}")
 
     valid_files = []
     for item in all_items:
         item_lower = item.lower()
+        # Check if it's an excel or csv file and not the output report
         if item_lower.endswith(('.xlsx', '.xls', '.csv')) and "consolidated report" not in item_lower:
-            valid_files.append(os.path.join(folder_path, item))
+            full_path = os.path.join(folder_path, item)
+            valid_files.append(full_path)
             file_total += 1
+            print(f"  [ACCEPTED] Found valid file: {item}")
+        else:
+            print(f"  [SKIPPED] Ignored item: {item}")
 
     if file_total == 0:
-        print("No valid Excel or CSV files were found in the selected folder.")
+        print("\n[WARNING] 0 valid files were identified. Make sure your CSV and Excel files are directly in the selected folder.")
         return
 
-    print(f"\n--- Scanning {file_total} files ---")
+    print(f"\n--- Starting Processing of {file_total} files ---")
 
     for file_path in valid_files:
         file_name = os.path.basename(file_path)
@@ -50,15 +59,17 @@ def create_consolidated_report():
 
         try:
             if file_name.lower().endswith('.csv'):
+                # Read CSV file safely
                 df_csv = pd.read_csv(file_path, header=None, sep=None, engine='python', encoding='utf-8-sig', on_bad_lines='skip')
                 dfs = {file_name: df_csv}
             else:
                 dfs = pd.read_excel(file_path, sheet_name=None, header=None)
 
             for sheet_name, df in dfs.items():
-                print(f"  -> Source '{sheet_name}' shape: {df.shape}")
+                print(f"  -> Sheet/Source '{sheet_name}' shape: {df.shape}")
                 
                 if is_custom_file:
+                    # Custom files: Column A (0) = Name, Column B (1) = Count, Column C (2) = Size
                     if df.shape[1] >= 3:
                         sheet_rows_added = 0
                         for _, row in df.iterrows():
@@ -85,6 +96,7 @@ def create_consolidated_report():
                     else:
                         print(f"     ERROR: File has fewer than 3 columns (found {df.shape[1]}).")
                 else:
+                    # Standard files logic
                     header_row_idx = -1
                     count_col = -1
                     size_col = -1
@@ -124,9 +136,11 @@ def create_consolidated_report():
                             dict_count[error_name] = dict_count.get(error_name, 0.0) + row_count_val
                             dict_bytes[error_name] = dict_bytes.get(error_name, 0.0) + row_bytes_val
                             processed_sheets += 1
+                    else:
+                        print(f"     Standard file missing 'Count' or 'Size' headers. Skipped.")
 
         except Exception as e:
-            print(f"Error processing file {file_name}: {e}")
+            print(f"  [CRITICAL ERROR] Processing file {file_name}: {e}")
 
     report_data = []
     for key in dict_count:
@@ -153,10 +167,12 @@ def create_consolidated_report():
     output_path = os.path.join(folder_path, "Consolidated report.xlsx")
     report_df.to_excel(output_path, index=False)
 
-    print("\nConsolidated report has been created successfully.")
+    print("\n==========================================")
+    print("Consolidated report has been created successfully.")
     print(f"Files processed: {file_done}")
     print(f"Sheets processed: {processed_sheets}")
     print(f"Location: {output_path}")
+    print("==========================================")
 
 if __name__ == "__main__":
     create_consolidated_report()
