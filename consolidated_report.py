@@ -1,6 +1,6 @@
 import os
 import sys
-import win32com.client
+import win32com.client as win32
 
 
 def find_header_column(ws, header_name):
@@ -22,8 +22,8 @@ def create_consolidated_report(selected_folder=""):
   try:
     folder_path = selected_folder.strip()
 
-    # Initialize Excel application
-    xl = win32com.client.Dispatch("Excel.Application")
+    # Use gencache to ensure full early-bound COM support for PyInstaller
+    xl = win32.gencache.EnsureDispatch("Excel.Application")
 
     if not folder_path:
       file_dialog = xl.FileDialog(3)  # 3 is msoFileDialogFolderPicker
