@@ -43,10 +43,13 @@ def create_consolidated_report():
     for file_path in valid_files:
         file_name = os.path.basename(file_path)
         file_done += 1
-        print(f"Processing file {file_done} of {file_total}: {file_name}")
 
         base_name, _ = os.path.splitext(file_name)
-        is_custom_file = "_custom" in base_name.lower()
+        # Robust check for custom files (handles _custom, _Custom, etc.)
+        is_custom_file = "_custom" in base_name.lower() or "custom" in base_name.lower()
+
+        file_type_label = "CUSTOM" if is_custom_file else "STANDARD"
+        print(f"Processing [{file_type_label}] file {file_done} of {file_total}: {file_name}")
 
         try:
             if file_name.lower().endswith('.csv'):
@@ -56,7 +59,9 @@ def create_consolidated_report():
 
             for sheet_name, df in dfs.items():
                 if is_custom_file:
+                    # Custom files: Column A = Name, Column B = Count, Column C = Size
                     if df.shape[1] >= 3:
+                        # Skip first 3 rows (indices 0, 1, 2)
                         data_rows = df.iloc[3:]
                         for _, row in data_rows.iterrows():
                             error_name = str(row.iloc[0]).strip()
@@ -74,7 +79,10 @@ def create_consolidated_report():
                                 dict_count[error_name] = dict_count.get(error_name, 0.0) + row_count
                                 dict_bytes[error_name] = dict_bytes.get(error_name, 0.0) + row_bytes
                                 processed_sheets += 1
+                    else:
+                        print(f"  -> Warning: Custom file '{file_name}' sheet '{sheet_name}' has fewer than 3 columns and was skipped.")
                 else:
+                    # Standard files: Look for "Count" and "Size" headers
                     header_row_idx = -1
                     count_col = -1
                     size_col = -1
