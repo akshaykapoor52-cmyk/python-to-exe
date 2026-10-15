@@ -1,5 +1,7 @@
+import glob
 import os
 import sys
+import ctypes
 import win32com.client as win32
 
 
@@ -12,6 +14,11 @@ def find_header_column(ws, header_name):
       return c
 
   return 0
+
+
+def show_msgbox(text, title, style=0):
+  # Native Windows MessageBox using ctypes (0 = MB_OK, 16 = MB_ICONERROR, 48 = MB_ICONWARNING, 64 = MB_ICONINFORMATION)
+  return ctypes.windll.user32.MessageBoxW(0, text, title, style)
 
 
 def create_consolidated_report(selected_folder=""):
@@ -32,28 +39,32 @@ def create_consolidated_report(selected_folder=""):
         return
       folder_path = file_dialog.SelectedItems(1)
 
-    if not folder_path.endswith("\\"):
+    if not folder_path.endswith("\\") and not folder_path.endswith("/"):
       folder_path = folder_path + "\\"
 
     dict_count = {}
     dict_bytes = {}
 
-    # Find total files
-    file_total = 0
-    file_name = xl.Dir(folder_path & "*.xls*")
-    while file_name != "":
+    # Find Excel files using glob
+    search_pattern = os.path.join(folder_path, "*.xls*")
+    all_files = glob.glob(search_pattern)
+    
+    excel_files = []
+    for f in all_files:
+      fname = os.path.basename(f)
       if (
-          file_name.lower() != "consolidated report.xlsx"
-          and file_name.lower() != "consolidated report.xlsm"
+          fname.lower() != "consolidated report.xlsx"
+          and fname.lower() != "consolidated report.xlsm"
       ):
-        file_total += 1
-      file_name = xl.Dir()
+        excel_files.append(f)
+
+    file_total = len(excel_files)
 
     if file_total == 0:
-      xl.MsgBox(
+      show_msgbox(
           "No Excel files were found in:\r\n" + folder_path,
-          48,
           "No Files Found",
+          48,
       )
       return
 
@@ -63,60 +74,53 @@ def create_consolidated_report(selected_folder=""):
 
     file_done = 0
     processed_sheets = 0
-    file_name = xl.Dir(folder_path & "*.xls*")
 
-    while file_name != "":
-      if (
-          file_name.lower() != "consolidated report.xlsx"
-          and file_name.lower() != "consolidated report.xlsm"
-      ):
-        file_done += 1
-        file_path = folder_path + file_name
+    for file_path in excel_files:
+      file_done += 1
+      fname = os.path.basename(file_path)
 
-        wb = xl.Workbooks.Open(
-            Filename=file_path, ReadOnly=True, UpdateLinks=False
-        )
+      wb = xl.Workbooks.Open(
+          Filename=file_path, ReadOnly=True, UpdateLinks=False
+      )
 
-        for ws in wb.Worksheets:
-          count_col = find_header_column(ws, "Count")
-          size_col = find_header_column(ws, "Size")
+      for ws in wb.Worksheets:
+        count_col = find_header_column(ws, "Count")
+        size_col = find_header_column(ws, "Size")
 
-          if count_col > 0 and size_col > 0:
-            last_row_count = ws.Cells(ws.Rows.Count, count_col).End(-4162).Row  # -4162 is xlUp
-            last_row_size = ws.Cells(ws.Rows.Count, size_col).End(-4162).Row
-            last_row = max(last_row_count, last_row_size)
+        if count_col > 0 and size_col > 0:
+          last_row_count = ws.Cells(ws.Rows.Count, count_col).End(-4162).Row  # -4162 is xlUp
+          last_row_size = ws.Cells(ws.Rows.Count, size_col).End(-4162).Row
+          last_row = max(last_row_count, last_row_size)
 
-            sheet_count = 0.0
-            sheet_bytes = 0.0
+          sheet_count = 0.0
+          sheet_bytes = 0.0
 
-            for r in range(2, last_row + 1):
-              val_count = ws.Cells(r, count_col).Value
-              val_size = ws.Cells(r, size_col).Value
+          for r in range(2, last_row + 1):
+            val_count = ws.Cells(r, count_col).Value
+            val_size = ws.Cells(r, size_col).Value
 
-              if val_count is not None and str(val_count).replace(".", "", 1).isdigit():
-                sheet_count += float(val_count)
-              if val_size is not None and str(val_size).replace(".", "", 1).isdigit():
-                sheet_bytes += float(val_size)
+            if val_count is not None and str(val_count).replace(".", "", 1).isdigit():
+              sheet_count += float(val_count)
+            if val_size is not None and str(val_size).replace(".", "", 1).isdigit():
+              sheet_bytes += float(val_size)
 
-            ws_name = str(ws.Name)
-            if "OCR" in ws_name.upper() or "TEXT" in ws_name.upper():
-              error_name = "OCR Exceptions"
-            else:
-              error_name = ws_name
+          ws_name = str(ws.Name)
+          if "OCR" in ws_name.upper() or "TEXT" in ws_name.upper():
+            error_name = "OCR Exceptions"
+          else:
+            error_name = ws_name
 
-            if error_name not in dict_count:
-              dict_count[error_name] = sheet_count
-              dict_bytes[error_name] = sheet_bytes
-            else:
-              dict_count[error_name] += sheet_count
-              dict_bytes[error_name] += sheet_bytes
+          if error_name not in dict_count:
+            dict_count[error_name] = sheet_count
+            dict_bytes[error_name] = sheet_bytes
+          else:
+            dict_count[error_name] += sheet_count
+            dict_bytes[error_name] += sheet_bytes
 
-            processed_sheets += 1
+          processed_sheets += 1
 
-        wb.Close(SaveChanges=False)
-        wb = None
-
-      file_name = xl.Dir()
+      wb.Close(SaveChanges=False)
+      wb = None
 
     report_wb = xl.Workbooks.Add()
     report_ws = report_wb.Worksheets(1)
@@ -164,7 +168,7 @@ def create_consolidated_report(selected_folder=""):
     xl.DisplayAlerts = True
     xl.EnableEvents = True
 
-    xl.MsgBox(
+    show_msgbox(
         "Consolidated report has been created successfully.\r\n\r\nFiles processed: "
         + str(file_done)
         + "\r\nSheets processed: "
@@ -172,8 +176,8 @@ def create_consolidated_report(selected_folder=""):
         + "\r\n\r\nLocation:\r\n"
         + folder_path
         + "Consolidated report.xlsx",
-        64,
         "Report Complete",
+        64,
     )
 
   except Exception as err:
@@ -185,11 +189,11 @@ def create_consolidated_report(selected_folder=""):
       xl.ScreenUpdating = True
       xl.DisplayAlerts = True
       xl.EnableEvents = True
-      xl.MsgBox(
-          "An error occurred:\r\n\r\n" + str(err),
-          16,
-          "Consolidated Report Tool",
-      )
+    show_msgbox(
+        "An error occurred:\r\n\r\n" + str(err),
+        "Consolidated Report Tool",
+        16,
+    )
 
 
 if __name__ == "__main__":
