@@ -26,7 +26,7 @@ jobs:
 
     - name: Build with PyInstaller
       run: |
-        pyinstaller --onefile --noconsole consolidate_reports.py
+        pyinstaller --onefile --noconsole --hidden-import=pandas --hidden-import=openpyxl --collect-all pandas consolidate_reports.py
 
     - name: Upload Executable Artifact
       uses: actions/upload-artifact@v4
